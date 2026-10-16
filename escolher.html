@@ -27,6 +27,7 @@ button:disabled{opacity:.5;cursor:default}
 <script>
 const CONFIG = {"clientId":"614433344305-oldct2qvu2f6l2o9romh8i16ki8k0qce.apps.googleusercontent.com","apiKey":"AIzaSyBPpQVTit_LXDZUgDrbet9yO2T-hl6o9bM","appId":"614433344305"};
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DOC = 'application/vnd.google-apps.document';
 const button = document.getElementById('escolher');
 const status = document.getElementById('estado');
 let tokenClient = null;
@@ -54,14 +55,17 @@ function gisLoaded() {
   });
   ready();
 }
-// the project number (setAppId) is what makes Google hand the chosen file to the app
+// the project number (setAppId) is what makes Google hand the chosen file to the app; one tab per
+// place (setEnableDrives shows only shared drives, so they get a tab of their own)
 function showPicker() {
-  const view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
-    .setMimeTypes('application/vnd.google-apps.document')
-    .setIncludeFolders(true)
-    .setEnableDrives(true);
+  const docs = () => new google.picker.DocsView(google.picker.ViewId.DOCS).setMimeTypes(DOC);
+  const myDrive = docs().setIncludeFolders(true).setParent('root');
+  const sharedWithMe = docs().setOwnedByMe(false);
+  const sharedDrives = docs().setIncludeFolders(true).setEnableDrives(true);
   new google.picker.PickerBuilder()
-    .addView(view)
+    .addView(myDrive)
+    .addView(sharedWithMe)
+    .addView(sharedDrives)
     .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
     .setOAuthToken(token)
     .setDeveloperKey(CONFIG.apiKey)
