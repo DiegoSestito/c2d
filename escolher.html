@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escolher no Google Drive</title>
+<style>
+:root{--bg:#f7f6f3;--paper:#fff;--ink:#1f2328;--soft:#5b616b;--line:#e3e1dc;--accent:#5a3fd6;--on-accent:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#16171a;--paper:#1f2125;--ink:#e8e6e3;--soft:#a3a7ae;--line:#33363c;--accent:#a593ff;--on-accent:#16171a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:560px;margin:0 auto;padding:48px 16px}
+h1{font-size:26px;line-height:1.2;margin:0 0 12px}
+p{color:var(--soft)}
+button{font:inherit;font-weight:600;padding:12px 20px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#estado{color:var(--ink);min-height:1.6em}
+</style>
+</head>
+<body>
+<main>
+<h1>Escolher o manuscrito</h1>
+<p>Escolha o Google Docs que o app vai sincronizar com o seu design no Canva. O app só vê os documentos escolhidos aqui.</p>
+<button id="escolher" disabled>Escolher no Google Drive</button>
+<p id="estado" role="status">Carregando o Google…</p>
+</main>
+<script>
+const CONFIG = {"clientId":"614433344305-oldct2qvu2f6l2o9romh8i16ki8k0qce.apps.googleusercontent.com","apiKey":"AIzaSyBPpQVTit_LXDZUgDrbet9yO2T-hl6o9bM","appId":"614433344305"};
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const button = document.getElementById('escolher');
+const status = document.getElementById('estado');
+let tokenClient = null;
+let pickerReady = false;
+let token = null;
+const say = (text) => { status.textContent = text; };
+const ready = () => {
+  if (!tokenClient || !pickerReady) return;
+  button.disabled = false;
+  say('');
+};
+function gapiLoaded() {
+  gapi.load('picker', () => { pickerReady = true; ready(); });
+}
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.clientId,
+    scope: SCOPE,
+    callback: (answer) => {
+      if (answer.error) return say('O Google não deu o acesso: ' + (answer.error_description || answer.error));
+      token = answer.access_token;
+      showPicker();
+    },
+    error_callback: (err) => say(err.type === 'popup_closed' ? 'A janela do Google fechou antes do fim.' : 'Não consegui abrir o login do Google: ' + (err.message || err.type)),
+  });
+  ready();
+}
+// the project number (setAppId) is what makes Google hand the chosen file to the app
+function showPicker() {
+  const view = new google.picker.DocsView(google.picker.ViewId.DOCUMENTS)
+    .setMimeTypes('application/vnd.google-apps.document')
+    .setIncludeFolders(true)
+    .setEnableDrives(true);
+  new google.picker.PickerBuilder()
+    .addView(view)
+    .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
+    .setOAuthToken(token)
+    .setDeveloperKey(CONFIG.apiKey)
+    .setAppId(CONFIG.appId)
+    .setLocale('pt-BR')
+    .setTitle('Escolha o manuscrito (Google Docs)')
+    .setCallback(picked)
+    .build()
+    .setVisible(true);
+}
+function picked(data) {
+  if (data.action === google.picker.Action.PICKED) {
+    say('Pronto: «' + data.docs[0].name + '». Volte ao Canva: o documento aparece na lista do painel.');
+  } else if (data.action === google.picker.Action.CANCEL) {
+    say('Nenhum documento escolhido.');
+  }
+}
+button.addEventListener('click', () => {
+  say('');
+  if (token) showPicker();
+  else tokenClient.requestAccessToken({ prompt: '' });
+});
+</script>
+<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
