@@ -22,38 +22,58 @@ button:disabled{opacity:.5;cursor:default}
 <h1>Escolher o manuscrito</h1>
 <p>Escolha o Google Docs que o app vai sincronizar com o seu design no Canva. O app só vê os documentos escolhidos aqui.</p>
 <button id="escolher" disabled>Escolher no Google Drive</button>
-<p id="estado" role="status">Carregando o Google…</p>
+<p id="estado" role="status">Indo para o Google…</p>
 </main>
 <script>
 const CONFIG = {"clientId":"614433344305-oldct2qvu2f6l2o9romh8i16ki8k0qce.apps.googleusercontent.com","apiKey":"AIzaSyBPpQVTit_LXDZUgDrbet9yO2T-hl6o9bM","appId":"614433344305"};
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const DOC = 'application/vnd.google-apps.document';
+const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const button = document.getElementById('escolher');
 const status = document.getElementById('estado');
-let tokenClient = null;
-let pickerReady = false;
+// this page: Google sends the person back here, with the token after the #
+const here = location.origin + location.pathname;
 let token = null;
+let pickerReady = false;
 const say = (text) => { status.textContent = text; };
-const ready = () => {
-  if (!tokenClient || !pickerReady) return;
-  button.disabled = false;
-  say('');
-};
-function gapiLoaded() {
-  gapi.load('picker', () => { pickerReady = true; ready(); });
+// something went wrong: the reason and the button, never a new trip to Google by itself
+const offer = (text) => { say(text); button.disabled = false; };
+
+// Google's login in this tab (no pop-up, so no click needed); the state ties the answer to this trip
+function login() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const state = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem('c2d-state', state);
+  const params = new URLSearchParams({ client_id: CONFIG.clientId, redirect_uri: here, response_type: 'token', scope: SCOPE, include_granted_scopes: 'true', state });
+  location.replace(AUTH + '?' + params);
 }
-function gisLoaded() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CONFIG.clientId,
-    scope: SCOPE,
-    callback: (answer) => {
-      if (answer.error) return say('O Google não deu o acesso: ' + (answer.error_description || answer.error));
-      token = answer.access_token;
-      showPicker();
-    },
-    error_callback: (err) => say(err.type === 'popup_closed' ? 'A janela do Google fechou antes do fim.' : 'Não consegui abrir o login do Google: ' + (err.message || err.type)),
+
+// what Google sent back in the address: 'nada' (first visit), 'token' or 'recusado'
+function arrived() {
+  if (!location.hash) return 'nada';
+  const back = new URLSearchParams(location.hash.slice(1));
+  // the token leaves the address bar (and the history) right away
+  history.replaceState(null, '', here);
+  const expected = sessionStorage.getItem('c2d-state');
+  sessionStorage.removeItem('c2d-state');
+  if (back.get('error')) {
+    offer('O Google não deu o acesso. Tente de novo.');
+    return 'recusado';
+  }
+  if (!back.get('access_token') || !expected || back.get('state') !== expected) {
+    offer('Não consegui confirmar o login do Google. Tente de novo.');
+    return 'recusado';
+  }
+  token = back.get('access_token');
+  return 'token';
+}
+
+function gapiLoaded() {
+  gapi.load('picker', () => {
+    pickerReady = true;
+    if (token) showPicker();
   });
-  ready();
 }
 // the project number (setAppId) is what makes Google hand the chosen file to the app; one tab per
 // place (setEnableDrives shows only shared drives, so they get a tab of their own)
@@ -76,20 +96,29 @@ function showPicker() {
     .build()
     .setVisible(true);
 }
+// chosen: the tab closes (the panel picks the document up when Canva shows again); a browser that
+// does not let a page close its tab keeps the sentence
 function picked(data) {
   if (data.action === google.picker.Action.PICKED) {
-    say('Pronto: «' + data.docs[0].name + '». Volte ao Canva: o documento aparece na lista do painel.');
+    say('Pronto: «' + data.docs[0].name + '». Pode fechar esta aba e voltar ao Canva.');
+    window.close();
   } else if (data.action === google.picker.Action.CANCEL) {
-    say('Nenhum documento escolhido.');
+    offer('Nenhum documento escolhido.');
   }
 }
 button.addEventListener('click', () => {
-  say('');
-  if (token) showPicker();
-  else tokenClient.requestAccessToken({ prompt: '' });
+  button.disabled = true;
+  say('Indo para o Google…');
+  login();
 });
+
+const start = arrived();
+if (start === 'nada') login();
+else if (start === 'token') {
+  say('Abrindo a janela do Google…');
+  if (pickerReady) showPicker();
+}
 </script>
 <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
 </body>
 </html>
